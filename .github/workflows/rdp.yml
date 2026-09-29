@@ -1,0 +1,51 @@
+name: Windows-Tailscale-RDP
+
+on: 
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: 1. Instalar Tailscale
+        shell: powershell
+        run: |
+          # Descarga e instala el MSI de Tailscale de forma silenciosa
+          Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe" -OutFile "tailscale-setup.exe"
+          Start-Process -FilePath ".\tailscale-setup.exe" -ArgumentList "/quiet", "/norestart" -Wait
+
+      - name: 2. Conectar a Tailscale
+        shell: powershell
+        run: |
+          # Usamos el Auth Key guardado en los secretos de GitHub
+          # Importante: Asegúrate de guardar tu clave como TAILSCALE_AUTH_KEY en Settings > Secrets
+          & "C:\Program Files\Tailscale\tailscale.exe" up --authkey ${{ secrets.TAILSCALE_AUTH_KEY }} --hostname "GitHub-Runner-Win"
+
+      - name: 3. Configurar Windows y RDP
+        run: |
+          $password = "Pass12345!"
+          net user runneradmin $password
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -Value 0
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 1
+
+      - name: 4. Obtener IP de Tailscale
+        shell: powershell
+        run: |
+          $tsIP = (& "C:\Program Files\Tailscale\tailscale.exe" ip -4)
+          Write-Host "=========================================="
+          Write-Host "CONEXION PRIVADA EXITOSA"
+          Write-Host "DIRECCION IP TAILSCALE: $tsIP"
+          Write-Host "USUARIO: runneradmin"
+          Write-Host "PASSWORD: Pass12345!"
+          Write-Host "=========================================="
+          Write-Host "Nota: Debes estar conectado a tu red Tailscale para acceder."
+
+      - name: 5. Mantener Sesion Viva
+        run: |
+          Write-Host "Sesion activa por 6 horas. Monitoreando..."
+          $timeout = 360
+          for ($i=1; $i -le $timeout; $i++) {
+             Write-Host "Minuto $i de $timeout..."
+             Start-Sleep -Seconds 60
+          }
